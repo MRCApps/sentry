@@ -40,6 +40,7 @@ from sentry.models.eventattachment import EventAttachment
 from sentry.models.groupshare import GroupShare
 from sentry.models.organization import Organization
 from sentry.models.organizationmember import OrganizationMember
+from sentry.notebooks.access import NOTEBOOKS_FEATURE
 from sentry.organizations.services.organization import organization_service
 from sentry.replays.lib.storage import FilestoreBlob, RecordingSegmentStorageMeta
 from sentry.replays.testutils import mock_replay, mock_replay_viewed
@@ -638,26 +639,11 @@ SERVICE_ACCOUNT_SCOPES = frozenset(organization_roles.get("owner").scopes & GRAN
 
 
 class ServiceAccountGap(StrEnum):
-    CONTROL_SILO = "service account auth is cell-only"
-    NO_MEMBERSHIP = "checks the caller's own membership or org role, which a service account lacks"
     NO_TEAM_ACCESS = "service accounts reach no teams in v1"
 
 
 # Rows that don't match the oracle yet. Strict, so a fixed row fails until removed here.
 SERVICE_ACCOUNT_KNOWN_GAPS: dict[str, ServiceAccountGap] = {
-    "OrganizationIntegrationChannelValidate": ServiceAccountGap.CONTROL_SILO,
-    "OrganizationIntegrationChannels": ServiceAccountGap.CONTROL_SILO,
-    "OrganizationIntegrationDetails": ServiceAccountGap.CONTROL_SILO,
-    "OrganizationIntegrationDetails_delete": ServiceAccountGap.CONTROL_SILO,
-    "OrganizationIntegrations": ServiceAccountGap.CONTROL_SILO,
-    "OrganizationSentryAppComponents": ServiceAccountGap.CONTROL_SILO,
-    "OrganizationSentryApps": ServiceAccountGap.CONTROL_SILO,
-    "SentryAppDetails": ServiceAccountGap.CONTROL_SILO,
-    "SentryAppDetails_delete": ServiceAccountGap.CONTROL_SILO,
-    "SentryAppDetails_put": ServiceAccountGap.CONTROL_SILO,
-    "SentryAppInstallationExternalIssueActions_post": ServiceAccountGap.CONTROL_SILO,
-    "SentryAppInstallationExternalRequests": ServiceAccountGap.CONTROL_SILO,
-    "EventAttachmentDetails": ServiceAccountGap.NO_MEMBERSHIP,
     "ExternalTeam_post": ServiceAccountGap.NO_TEAM_ACCESS,
     "ExternalTeamDetails_delete": ServiceAccountGap.NO_TEAM_ACCESS,
     "ExternalTeamDetails_put": ServiceAccountGap.NO_TEAM_ACCESS,
@@ -667,11 +653,12 @@ SERVICE_ACCOUNT_KNOWN_GAPS: dict[str, ServiceAccountGap] = {
     "TeamDetails_put": ServiceAccountGap.NO_TEAM_ACCESS,
     "TeamMembers": ServiceAccountGap.NO_TEAM_ACCESS,
     "TeamProjects": ServiceAccountGap.NO_TEAM_ACCESS,
-    "TeamProjects_post": ServiceAccountGap.NO_TEAM_ACCESS,
 }
 
-# Rows that act on the caller as a person (saved views, stars, a personal team) or manage
-# members (including SCIM), so a service account is denied with user-required instead of matching the oracle.
+# Rows that act on the caller as a person (saved views, stars, a personal team, a Sentry
+# App request that names the acting user, deleting a Sentry App), manage members
+# (including SCIM) or create a project, which service accounts can't do for now. A service
+# account is denied with user-required instead of matching the oracle.
 SERVICE_ACCOUNT_USER_REQUIRED = frozenset(
     {
         "OrganizationGroupSearchViews_post",
@@ -699,6 +686,10 @@ SERVICE_ACCOUNT_USER_REQUIRED = frozenset(
         "OrganizationSCIMTeamIndex_post",
         "OrganizationStarredServiceSpans_delete",
         "OrganizationStarredServiceSpans_post",
+        "SentryAppDetails_delete",
+        "SentryAppInstallationExternalIssueActions_post",
+        "SentryAppInstallationExternalRequests",
+        "TeamProjects_post",
     }
 )
 
@@ -1529,6 +1520,14 @@ class AgentTokenPublicGetMatrixTest(APITestCase, OurLogTestCase):
             self.project.update_option("sentry:symbol_sources", json.dumps([resource]))
         elif name == "workflow":
             resource = self.create_workflow(organization=self.org)
+        elif name == "notebook":
+            resource = self.create_notebook(
+                organization=self.org, created_by=self.owner, title="Permission matrix"
+            )
+        elif name == "notebook_block":
+            resource = self.create_notebook_block(
+                notebook=self._resource("notebook"), position=0, kind="text"
+            )
         else:
             raise AssertionError(f"unknown matrix resource {name!r}")
 
@@ -1640,6 +1639,10 @@ class AgentTokenPublicGetMatrixTest(APITestCase, OurLogTestCase):
             return str(self._resource("service_hook").id)
         if placeholder == "workflow_id":
             return str(self._resource("workflow").id)
+        if placeholder == "notebook_id":
+            return str(self._resource("notebook").id)
+        if placeholder == "block_id":
+            return str(self._resource("notebook_block").id)
         if placeholder == "key":
             return "environment"
         if placeholder == "filter_id":
@@ -1836,6 +1839,8 @@ class AgentTokenPublicGetMatrixTest(APITestCase, OurLogTestCase):
             flags["projects:custom-inbound-filters"] = True
         if "Replay" in endpoint.endpoint_name:
             flags["organizations:session-replay"] = True
+        if endpoint.endpoint_name.startswith("OrganizationNotebook"):
+            flags[NOTEBOOKS_FEATURE] = True
         return flags
 
     def _mint_agent_token(
@@ -2215,6 +2220,28 @@ class AgentTokenPublicGetMatrixTest(APITestCase, OurLogTestCase):
                 },
                 "config": {"detectionType": AlertRuleDetectionType.STATIC.value},
                 "workflowIds": [self._resource("workflow").id],
+            },
+            ("OrganizationNotebookIndexEndpoint", "POST"): {
+                "title": "Permission matrix investigation",
+                "projectIds": [self.project.id],
+            },
+            ("OrganizationNotebookBlockIndexEndpoint", "POST"): {
+                "notebookVersion": self._resource("notebook").version,
+                "kind": "text",
+                "content": "Permission matrix block",
+            },
+            ("OrganizationNotebookBlockOrderEndpoint", "PUT"): {
+                "notebookVersion": self._resource("notebook").version,
+                "blockIds": [self._resource("notebook_block").id],
+            },
+            ("OrganizationNotebookBlockDetailsEndpoint", "PUT"): {
+                "notebookVersion": self._resource("notebook").version,
+                "version": self._resource("notebook_block").version,
+                "content": "Updated permission matrix block",
+            },
+            ("OrganizationNotebookBlockDetailsEndpoint", "DELETE"): {
+                "notebookVersion": self._resource("notebook").version,
+                "version": self._resource("notebook_block").version,
             },
             ("OrganizationMonitorIndexEndpoint", "POST"): {
                 "project": self.project.slug,
