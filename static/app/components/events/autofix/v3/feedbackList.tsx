@@ -19,6 +19,7 @@ import {Tooltip} from '@sentry/scraps/tooltip';
 import {CollapsibleContent} from 'sentry/components/ai/chat/collapsibleContent';
 import {
   isPrIterationBlock,
+  isPushingToPullRequest,
   type AutofixSection,
   type RawFeedback,
   type useExplorerAutofix,
@@ -32,7 +33,6 @@ import {userDisplayName} from 'sentry/utils/formatters';
 import {useOrganization} from 'sentry/utils/useOrganization';
 
 import {ArtifactDetails} from './artifactDetails';
-import {isPushingToPullRequest} from './usePullRequestPatches';
 
 const AVATAR_SIZE = 24;
 const SOURCE_BADGE_SIZE = 14;

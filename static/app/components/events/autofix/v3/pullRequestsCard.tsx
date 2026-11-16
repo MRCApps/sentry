@@ -12,6 +12,7 @@ import {getRepoPullRequestLink} from 'sentry/components/events/autofix/pullReque
 import {
   getAutofixArtifactFromSection,
   isPullRequestsArtifact,
+  isPushingToPullRequest,
   type AutofixSection,
   type useExplorerAutofix,
 } from 'sentry/components/events/autofix/useExplorerAutofix';
@@ -21,7 +22,6 @@ import {useCopyToClipboard} from 'sentry/utils/useCopyToClipboard';
 import {useOrganization} from 'sentry/utils/useOrganization';
 
 import {ArtifactCard} from './artifactCard';
-import {isPushingToPullRequest} from './usePullRequestPatches';
 import {artifactToMarkdown} from './utils';
 
 interface PullRequestsCardProps {
