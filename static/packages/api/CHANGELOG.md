@@ -1,3 +1,39 @@
+## 2.6.0
+
+### New Features ✨
+
+#### Api
+
+- Pass each operation's routing declaration to resolveBaseUrl by @BYK with @sentry-junior in [#131228](https://github.com/getsentry/sentry/pull/131228)
+- Add a type-only ApiRoutes map by path and method by @BYK with @sentry-junior in [#131221](https://github.com/getsentry/sentry/pull/131221)
+- Add Sentry's routing declarations to the operations catalog by @BYK with @sentry-junior in [#131222](https://github.com/getsentry/sentry/pull/131222)
+
+### Documentation 📚
+
+- (api) Document versioning, upgrades, deprecations and release candidates by @BYK with @sentry-junior in [#131218](https://github.com/getsentry/sentry/pull/131218)
+
+### Internal Changes 🔧
+
+- (api) Typecheck the README examples against the packed package by @BYK with @sentry-junior in [#131217](https://github.com/getsentry/sentry/pull/131217)
+
+## 2.5.3
+
+### Documentation 📚
+
+- (api) Link to Sentry with the URLs the API returns by @BYK with @sentry-junior in [#131219](https://github.com/getsentry/sentry/pull/131219)
+
+## 2.5.2
+
+### Bug Fixes 🐛
+
+- (api) Resolve the root entry's types under NodeNext by @BYK with @sentry-junior in [#131216](https://github.com/getsentry/sentry/pull/131216)
+
+## 2.5.1
+
+### Documentation 📚
+
+- (api) Document the package's Node.js support floor by @BYK with @sentry-junior in [#131205](https://github.com/getsentry/sentry/pull/131205)
+
 ## 2.5.0
 
 ### New Features ✨

@@ -11,6 +11,8 @@ The official, auto-generated TypeScript client for Sentry's public REST API.
 npm install @sentry/api
 ```
 
+Installed directly, the package supports Node.js 22 and later, as `engines.node` in `package.json` declares. A consumer that bundles it into its own build, like the [Sentry CLI](https://github.com/getsentry/toolkit/tree/main/packages/cli), ships its own runtime floor and tests the bundled copy itself. The CLI's packed-runtime CI covers its copy on Node.js 20.
+
 ## Usage
 
 Configure a client once, then call its typed operation methods:
@@ -85,6 +87,18 @@ const dataset: ListOrganizationTraceItemAttributesQueryDataset = "spans";
 const types: ListOrganizationTraceItemAttributesQueryAttributeType[] = ["string", "number"];
 ```
 
+### Types by path
+
+`ApiRoutes` maps each path, as written in the spec and relative to `API_BASE_PATH`, and HTTP method to its operation's name, `data` type, and status-keyed `responses` and `errors`. Use it when you build requests from a path rather than an operation function. It is type-only:
+
+```ts
+import type { ApiRoutes } from "@sentry/api";
+
+type ListProjects = ApiRoutes["/organizations/{organization_id_or_slug}/projects/"]["GET"];
+type Projects = ListProjects["responses"][200];
+type ProjectsQuery = ListProjects["data"]["query"];
+```
+
 ### Query defaults
 
 A few operations send a query parameter by default to skip expensive work most callers don't need. The operation's documentation states the default.
@@ -120,7 +134,7 @@ const logOperations = operations.filter(operation =>
 console.log(logOperations.map(({ functionName, method, path }) => ({ functionName, method, path })));
 ```
 
-Each `ApiOperation` records the actual exported `functionName`, original OpenAPI `operationId`, method, path (relative to `API_BASE_PATH`), summary, description, tags, path parameter names, query metadata, explicit deprecation flag, `experimental` flag, and `idempotent` flag. `ApiQueryParameter` includes the name, required flag, description, type, and declared enum values (item values for arrays). Operation parameters override inherited path parameters.
+Each `ApiOperation` records the actual exported `functionName`, original OpenAPI `operationId`, method, path (relative to `API_BASE_PATH`), summary, description, tags, path parameter names, query metadata, explicit deprecation flag, `experimental` flag, `idempotent` flag, and `routing` declaration. `ApiQueryParameter` includes the name, required flag, description, type, and declared enum values (item values for arrays). Operation parameters override inherited path parameters.
 
 `experimental` is `true` when Sentry marks the operation with the `x-sentry-experimental` OpenAPI extension, which it sets for endpoints under active development that may change. Their SDK docs also start with an **Experimental:** note. To find or reject experimental operations, for example in a lint rule or build check:
 
@@ -131,6 +145,15 @@ const experimental = new Set(
   operations.filter(operation => operation.experimental).map(operation => operation.functionName),
 );
 experimental.has("listOrganizationTraceMetrics"); // true
+```
+
+`routing` copies Sentry's `x-sentry-routing` declaration: `silo` is where the operation is declared available (`control`, `cell`, `both`, or `unknown`), and `organizationParameter`, when present, names the path parameter that identifies the organization. `silo` is availability, not a preferred destination or a guarantee that a gateway forwards the request, and `both` operations can return different results in each context. Consumers keep their own routing policy:
+
+```ts
+import { operations } from "@sentry/api/operations";
+
+const listProjects = operations.find(operation => operation.functionName === "listOrganizationProjects");
+listProjects?.routing; // { silo: "cell", organizationParameter: "organization_id_or_slug" }
 ```
 
 `idempotent` tells retrying clients whether resending an identical request after a timeout or 5xx response is safe. It is always `true` for `GET`, `HEAD`, `OPTIONS`, and `TRACE`. Other methods are `true` only when Sentry marks the operation with the `x-sentry-idempotent` OpenAPI extension; `false` means not known to be idempotent, not known to be unsafe.
@@ -216,18 +239,31 @@ const { data, error } = await sentry.listOrganizations();
 
 ### Routing requests by organization
 
-Set `resolveBaseUrl` to pick each request's base URL from its path before the
-URL is built, such as the region that serves the organization. It receives the
-configured `baseUrl` (`''` when unset), the path and query that follow it, and
-the organization and project the path targets (`parseApiPathScope` from
-`@sentry/api/client`; absent for unscoped paths). Its result replaces `baseUrl`
-for that request only; trailing slashes are removed.
+Set `resolveBaseUrl` to pick each request's base URL before the URL is built,
+such as the region that serves the organization. It receives the configured
+`baseUrl` (`''` when unset) and the path and query that follow it. For a
+generated operation it also receives `routing`, the operation's declaration
+from `@sentry/api/operations`, and `organization`, the value of the path
+parameter that `routing.organizationParameter` names. Raw requests have no
+`routing`. `scope` is the organization and project read from the path
+(`parseApiPathScope` from `@sentry/api/client`; absent for unscoped paths).
+Its result replaces `baseUrl` for that request only; trailing slashes are
+removed.
+
+`routeCellOperations` from `@sentry/api/client` builds a resolver from a lookup
+the host already has, such as cached `links.regionUrl` values from the
+organization listing. It sends operations declared `cell` to the region the
+lookup returns for their organization. Everything else keeps the configured
+base URL: `control` and `both` operations, `unknown` operations, raw requests,
+and organizations the lookup does not know. It never looks a region up itself,
+and it trusts the URLs the lookup returns.
 
 ```ts
+import { routeCellOperations } from "@sentry/api/client";
+
 const sentry = createSentryClient({
   baseUrl: "https://sentry.io",
-  resolveBaseUrl: async ({ baseUrl, scope }) =>
-    scope ? await regionUrlFor(scope.organization) : baseUrl,
+  resolveBaseUrl: routeCellOperations(organization => regionUrls.get(organization)),
 });
 // Sent to the organization's region, such as https://us.sentry.io.
 await sentry.listOrganizationIssues({ path: { organization_id_or_slug: "acme" } });
@@ -236,6 +272,23 @@ await sentry.listOrganizationIssues({ path: { organization_id_or_slug: "acme" } 
 It runs once per request, including `prepareRequest`, after `requestValidator`
 and before request interceptors. A per-call `resolveBaseUrl` replaces the
 configured one. A throw rejects the request unchanged, before `fetch` is called.
+
+### Linking to Sentry
+
+To link to something in Sentry, use the URL the API returns instead of building one from the base URL and slugs. Those URLs account for how the deployment is set up, such as organization subdomains or a self-hosted URL prefix:
+
+- Issues have `permalink`, the issue's page in Sentry.
+- AI conversations have `webUrl`, the conversation's page in Sentry.
+- Organizations have `links.organizationUrl`, the organization's base URL, and `links.regionUrl`, the base URL of its region's API. `regionUrl` is what a `resolveBaseUrl` like the one above returns.
+- External issues also have a `webUrl`, but it links to the issue in the other tool, not to Sentry.
+
+```ts
+const { data: organization } = await sentry.getOrganization({
+  path: { organization_id_or_slug: "my-org" },
+  throwOnError: true,
+});
+console.log(organization.links.organizationUrl, organization.links.regionUrl);
+```
 
 ### Preparing a raw request
 
@@ -657,6 +710,41 @@ const core = createApiClientCore({ transport, headers: () => ({}), logger: conso
 const projects = await core.requestJson("https://sentry.example.com", "/organizations/acme/projects/");
 ```
 
+## Versions and upgrades
+
+The package follows [semver](https://semver.org) and releases from getsentry/sentry as `api@<version>` tags. Each release's notes are in [CHANGELOG.md](./CHANGELOG.md) and on its [GitHub release](https://github.com/getsentry/sentry/releases).
+
+- A merged change to Sentry's API spec releases a minor version automatically. Minor releases add operations, parameters and fields. They can also change a type to match what the API already returns.
+- A change to the package itself releases the bump its commits call for: a feature is a minor and a fix is a patch. Release a breaking change by hand, as a major, with the Release workflow.
+- Removing or renaming an export, including a generated operation, is a breaking change and waits for a major release.
+
+### Upgrading
+
+Within a major version, upgrading keeps your calls working. Rerun your typecheck anyway: since the types follow the API, a type that now matches the server can surface a mismatch in your code. For a new major, read the CHANGELOG's Breaking Changes for every major in between.
+
+Release candidates, when there are any, publish under the `next` tag: `npm install @sentry/api@next`. See [Release candidates](#release-candidates).
+
+### Deprecations
+
+When Sentry deprecates an API endpoint (`deprecated=True` in its `extend_schema`), the endpoint keeps working. Its operation function and client method get a `@deprecated` tag, so editors strike through the calls, and it has `deprecated: true` in `@sentry/api/operations` and `@sentry/api/docs`. To list the deprecated operations:
+
+```ts
+import { operations } from "@sentry/api/operations";
+
+const deprecated = operations.filter(operation => operation.deprecated).map(operation => operation.functionName);
+```
+
+Deprecate a package export with a `@deprecated` tag that says what to use instead. Deprecated operations and exports stay until the next major release.
+
+### Release candidates
+
+To ship a risky change, such as a new major version, as a release candidate first:
+
+1. Run getsentry/sentry's [Release workflow](https://github.com/getsentry/sentry/actions/workflows/release.yml) with workspace `static/packages/api` and an exact prerelease version, such as `3.0.0-rc.0`.
+2. It publishes to npm under the `next` tag, so `latest` stays on the last stable release, and the GitHub release is marked as a prerelease.
+3. While a prerelease is the latest `api@` release, merged spec changes don't release automatically. Cut the next candidate, such as `3.0.0-rc.1`, the same way.
+4. To release the stable version, run the workflow with it, such as `3.0.0`. Automatic releases resume after that.
+
 ## Spec files
 
 Each `api@<version>` release on [GitHub](https://github.com/getsentry/sentry/releases) has the files that version was built from as assets:
@@ -680,6 +768,8 @@ pnpm --filter @sentry/api run test:vitest
 ```
 
 Tests import the generated `src/`, `dist/` and `spec/` output, so build before testing. The script is `test:vitest`, not `test`, because the repository's `test-ci` and `test-all` pass Jest options to every workspace's `test` script, and these tests need the spec build.
+
+Every `ts` example in this README is typechecked against the packed package by `test/readme.test.ts`, each as its own module. When an example uses a value it doesn't define, such as `sentry` or `options`, declare it in that test's `context`.
 
 ## License
 
