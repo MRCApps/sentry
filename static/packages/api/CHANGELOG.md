@@ -1,3 +1,16 @@
+## 2.7.0
+
+### New Features ✨
+
+- (api) Match a method and concrete path to a catalog operation by @BYK with @sentry-junior in [#131235](https://github.com/getsentry/sentry/pull/131235)
+
+### Internal Changes 🔧
+
+#### Api
+
+- Fail when a change drops an export of the latest release by @BYK with @sentry-junior in [#131210](https://github.com/getsentry/sentry/pull/131210)
+- Check the packed package on Node.js 22 and Bun by @BYK with @sentry-junior in [#131208](https://github.com/getsentry/sentry/pull/131208)
+
 ## 2.6.1
 
 ### Internal Changes 🔧
