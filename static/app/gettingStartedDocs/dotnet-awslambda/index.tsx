@@ -10,6 +10,6 @@ export const docs: Docs = {
   onboarding,
   feedbackOnboardingCrashApi: feedback,
   crashReportOnboarding: crashReport,
-  logsOnboarding: logs({logger: 'logger'}),
+  logsOnboarding: logs({logger: 'logger', docsGuide: 'aws-lambda'}),
   metricsOnboarding: metrics,
 };

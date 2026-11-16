@@ -57,8 +57,12 @@ ${logger}.LogError("A {Parameter} log message", "formatted");`,
 /**
  * @param logger For platforms whose `UseSentry` options have `EnableLogs`: the `ILogger`
  * the verify snippet logs through. Leave it out for platforms that call `SentrySdk.Init`.
+ * @param docsGuide The docs guide whose logs page to link, for platforms that have one.
  */
-export const logs = ({logger}: {logger?: string} = {}): OnboardingConfig => ({
+export const logs = ({
+  logger,
+  docsGuide,
+}: {docsGuide?: string; logger?: string} = {}): OnboardingConfig => ({
   install: params => [
     {
       type: StepType.INSTALL,
@@ -130,7 +134,11 @@ export const logs = ({logger}: {logger?: string} = {}): OnboardingConfig => ({
           text: tct(
             'For more detailed information on logging configuration, see the [link:logs documentation].',
             {
-              link: <ExternalLink href="https://docs.sentry.io/platforms/dotnet/logs/" />,
+              link: (
+                <ExternalLink
+                  href={`https://docs.sentry.io/platforms/dotnet/${docsGuide ? `guides/${docsGuide}/` : ''}logs/`}
+                />
+              ),
             }
           ),
         },

@@ -14,6 +14,6 @@ export const docs: Docs = {
   replayOnboardingJsLoader,
   crashReportOnboarding: crashReport,
   feedbackOnboardingJsLoader,
-  logsOnboarding: logs({logger: 'app.Logger'}),
+  logsOnboarding: logs({logger: 'app.Logger', docsGuide: 'aspnetcore'}),
   metricsOnboarding: metrics,
 };

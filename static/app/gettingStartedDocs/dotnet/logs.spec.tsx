@@ -20,11 +20,15 @@ describe('dotnet logs onboarding docs', () => {
     expect(
       screen.queryByText(textWithMarkupMatcher(/EnableLogs/))
     ).not.toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'logs documentation'})).toHaveAttribute(
+      'href',
+      'https://docs.sentry.io/platforms/dotnet/logs/'
+    );
   });
 
   it('renders the UseSentry logs setup when a logger is given', async () => {
     renderWithOnboardingLayout(
-      {onboarding: logs({logger: 'logger'})},
+      {onboarding: logs({logger: 'logger', docsGuide: 'aws-lambda'})},
       {selectedProducts: [ProductSolution.LOGS]}
     );
 
@@ -34,6 +38,10 @@ describe('dotnet logs onboarding docs', () => {
     expect(
       screen.getByText(textWithMarkupMatcher(/set EnableLogs to true/))
     ).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'logs documentation'})).toHaveAttribute(
+      'href',
+      'https://docs.sentry.io/platforms/dotnet/guides/aws-lambda/logs/'
+    );
   });
 
   it('does not render logs configuration when logs is not enabled', async () => {
