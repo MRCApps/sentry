@@ -101,6 +101,19 @@ def enqueue_autofix_feedback(
     )
 
 
+def requeue_autofix_feedback(run_id: int, items: Sequence[QueuedAutofixFeedback]) -> None:
+    """Put popped items back at the front of the run's queue, in their original order."""
+    if not items:
+        return
+
+    redis = redis_clusters.get(_REDIS_CLUSTER)
+    key = _feedback_queue_key(run_id)
+    with redis.pipeline() as pipe:
+        pipe.lpush(key, *(item.json() for item in reversed(items)))
+        pipe.expire(key, _QUEUE_TTL_SECONDS)
+        pipe.execute()
+
+
 def clear_queued_autofix_feedback(run_id: int) -> None:
     client = redis_clusters.get(_REDIS_CLUSTER)
     client.delete(_feedback_queue_key(run_id))
